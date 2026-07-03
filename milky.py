@@ -305,6 +305,10 @@ SCENES = ["circle", "horizon", "dual", "bars", "spokes",
           "lissajous", "ring", "starfield", "grid", "particles"]
 MIRRORS = ["none", "lr", "quad", "kaleido"]
 
+# Speed range for the up/down keys.  Multiplicative stepping gives fine
+# control down low, so 0.02 (a near-frozen ~50x slow crawl) is usable.
+SPEED_MIN, SPEED_MAX = 0.02, 4.0
+
 
 # --------------------------------------------------------------------------
 # main visualizer
@@ -356,7 +360,8 @@ class Milky:
         self.zoom_bias = 0.0
 
         self.t = 0.0
-        self.speed = 1.0
+        self.dt = 1 / 60.0               # last frame delta (speed-scaled)
+        self.speed = min(SPEED_MAX, max(SPEED_MIN, args.speed))
         self.hue = 0.0
         self.show_hud = True
         self.font = pygame.font.SysFont("consolas", 15, bold=True)
@@ -514,7 +519,7 @@ class Milky:
 
     def scene_particles(self, p, wave, spec):
         # emission handled in draw_overlay via beat; just render here
-        self.parts.step(1 / 60)
+        self.parts.step(self.dt)          # speed-scaled so slow-mo slows drift too
         for i in range(len(self.parts.pos)):
             x, y = self.parts.pos[i]
             if 0 <= x < self.RW and 0 <= y < self.RH:
@@ -632,11 +637,12 @@ class Milky:
                         f"{'+kaleido' if self.kaleido else ''}   "
                         f"bloom {'on' if self.use_bloom else 'off'}   "
                         f"sharp {'ON' if self.sharp else 'off'}   "
+                        f"speed {self.speed:0.2f}x   "
                         f"auto {'on' if self.auto else 'off'}   {int(self.fps)}fps  [{src}]",
              (200, 220, 230)),
             (self.font, f"beat {beat_bar:<20}", self._col(0.6)),
             (self.font, "space next  n/p scene  c palette  m mirror  k kaleido  "
-                        "x sharp  b bloom  a auto  s shot  h hud  f full  q quit",
+                        "x sharp  up/down speed  0 reset  s shot  h hud  f full  q quit",
              (150, 165, 180)),
         ]
         y = 8
@@ -691,9 +697,11 @@ class Milky:
                 elif k == pygame.K_h:
                     self.show_hud = not self.show_hud
                 elif k == pygame.K_UP:
-                    self.speed = min(3.0, self.speed + 0.15)
+                    self.speed = min(SPEED_MAX, self.speed * 1.18)
                 elif k == pygame.K_DOWN:
-                    self.speed = max(0.2, self.speed - 0.15)
+                    self.speed = max(SPEED_MIN, self.speed / 1.18)
+                elif k in (pygame.K_0, pygame.K_KP0):
+                    self.speed = 1.0
                 elif k == pygame.K_LEFTBRACKET:
                     self.decay_bias -= 1
                 elif k == pygame.K_RIGHTBRACKET:
@@ -727,6 +735,7 @@ class Milky:
             dt_ms = self.clock.tick(60)
             self.fps = self.clock.get_fps()
             dt = min(0.05, dt_ms / 1000.0) * self.speed
+            self.dt = dt
             self.t += dt
 
             if selftest_frames is None:
@@ -774,6 +783,8 @@ def parse_args(argv=None):
     ap.add_argument("--audio", action="store_true",
                     help="react to live microphone input (needs sounddevice)")
     ap.add_argument("--preset", default=None, help="start on a preset by name")
+    ap.add_argument("--speed", type=float, default=1.0,
+                    help="initial speed (0.02 = near-frozen slow, 4.0 = fast)")
     ap.add_argument("--nobloom", action="store_true", help="disable the bloom pass")
     ap.add_argument("--sharp", action="store_true",
                     help="start in sharp mode: crisp lines, no flash, minimal glow")

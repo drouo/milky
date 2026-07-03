@@ -58,8 +58,13 @@ python milky.py --nobloom            # disable bloom (faster on weak GPUs)
 | `x` | toggle sharp mode | `b` | toggle bloom |
 | `t` | toggle beat flash | | |
 | `[` / `]` | decay down / up | `-` / `=` | zoom down / up |
-| `↑` / `↓` | speed up / down | `s` | save screenshot (PNG → `shots/`) |
-| `h` | hide / show HUD | `f` | toggle fullscreen |
+| `↑` / `↓` | speed up / down (0.02×–4×) | `0` | reset speed to 1× |
+| `s` | save screenshot (PNG → `shots/`) | `h` | hide / show HUD |
+| `f` | toggle fullscreen | | |
+
+Speed steps multiplicatively, so you get fine control at the slow end — hold
+`↓` and it eases all the way down to a near-frozen **0.02×** crawl (great for
+the sharp presets). `0` snaps back to 1×. Start slow with `--speed 0.05`.
 
 ## How the live audio works
 
