@@ -15,7 +15,11 @@ on top.
 - **Feedback warp tunnel** — the core Milkdrop trick: every frame zooms +
   rotates the previous frame and blits it back, so everything trails into an
   endless morphing tunnel. Zoom/rotation react to the beat.
-- **10 auto-morphing presets** that smoothly cross-fade one into the next.
+- **12 auto-morphing presets** that smoothly cross-fade one into the next —
+  tuned across a range from crisp/poignant to loud/explosive.
+- **Sharp mode** (`x` or `--sharp`) — dials any preset down to defined,
+  anti-aliased lines on near-black: no beat flash, minimal glow, no particle
+  spray. Presets **Contour / Minimal / Ink Scope / Blueprint** ship this way.
 - **7 color palettes** — Rainbow, Fire, Ice, Toxic, Sunset, Neon, Mono.
 - **Mirror / kaleidoscope** modes — none, left-right, quad, 6-fold kaleido.
 - **Bloom glow** pass, **beat flash**, pulsing additive shapes, particle bursts.
@@ -38,6 +42,7 @@ python milky.py --audio              # react to your microphone
 python milky.py --fullscreen
 python milky.py -W 1280 -H 720
 python milky.py --preset Supernova   # start on a named preset
+python milky.py --sharp              # crisp/defined look, calm the flash & glow
 python milky.py --list               # list presets/scenes/palettes and exit
 python milky.py --nobloom            # disable bloom (faster on weak GPUs)
 ```
@@ -50,7 +55,8 @@ python milky.py --nobloom            # disable bloom (faster on weak GPUs)
 | `r` | random preset | `a` | toggle auto-cycle |
 | `n` / `p` | next / prev scene | `c` | cycle palette |
 | `m` | cycle mirror mode | `k` | toggle kaleidoscope |
-| `b` | toggle bloom | `t` | toggle beat flash |
+| `x` | toggle sharp mode | `b` | toggle bloom |
+| `t` | toggle beat flash | | |
 | `[` / `]` | decay down / up | `-` / `=` | zoom down / up |
 | `↑` / `↓` | speed up / down | `s` | save screenshot (PNG → `shots/`) |
 | `h` | hide / show HUD | `f` | toggle fullscreen |

@@ -238,27 +238,51 @@ class Particles:
 # presets: parameter bundles that reference a scene + motion
 # --------------------------------------------------------------------------
 def make_presets():
+    # Per-preset "look" knobs, alongside motion:
+    #   bloom  0..1  glow strength         flash  0..1  beat-flash strength
+    #   emit   int   particles per beat    aa     bool   crisp anti-aliased lines
+    #   shapes int   additive glow blobs
+    # Loud presets keep bloom/flash/emit high; the "sharp" ones near zero.
     return [
-        dict(name="Hyperspace", scene="circle",    zoom=1.028, zoom_beat=0.05,
-             rot=0.10, rot_wob=0.6, decay=10, hue_speed=0.03, shapes=3, warp=0),
-        dict(name="Vortex",     scene="spokes",    zoom=1.012, zoom_beat=0.02,
-             rot=0.55, rot_wob=1.4, decay=8,  hue_speed=0.05, shapes=5, warp=0),
-        dict(name="Dutchman",   scene="horizon",   zoom=1.035, zoom_beat=0.09,
-             rot=-0.18, rot_wob=2.2, decay=14, hue_speed=0.02, shapes=2, warp=8),
-        dict(name="Aurora",     scene="dual",      zoom=1.006, zoom_beat=0.015,
-             rot=0.05, rot_wob=0.3, decay=6,  hue_speed=0.08, shapes=4, warp=4),
-        dict(name="Nova Pulse", scene="ring",      zoom=1.020, zoom_beat=0.12,
-             rot=0.28, rot_wob=1.0, decay=11, hue_speed=0.10, shapes=6, warp=2),
+        # --- crisp / poignant: minimal glow, no flash, defined lines ----------
+        dict(name="Contour",    scene="circle",    zoom=1.002, zoom_beat=0.01,
+             rot=0.04, rot_wob=0.15, decay=30, hue_speed=0.02, shapes=0, warp=0,
+             bloom=0.18, flash=0.0, emit=0, aa=True),
+        dict(name="Minimal",    scene="horizon",   zoom=1.000, zoom_beat=0.004,
+             rot=0.0, rot_wob=0.04, decay=44, hue_speed=0.015, shapes=0, warp=0,
+             bloom=0.12, flash=0.0, emit=0, aa=True),
+        dict(name="Ink Scope",  scene="lissajous", zoom=1.000, zoom_beat=0.006,
+             rot=0.06, rot_wob=0.2, decay=38, hue_speed=0.03, shapes=0, warp=0,
+             bloom=0.14, flash=0.0, emit=0, aa=True),
+        dict(name="Blueprint",  scene="grid",      zoom=1.002, zoom_beat=0.006,
+             rot=0.0, rot_wob=0.05, decay=26, hue_speed=0.02, shapes=0, warp=0,
+             bloom=0.16, flash=0.0, emit=0, aa=True),
+        # --- balanced ---------------------------------------------------------
         dict(name="Equalizer",  scene="bars",      zoom=1.004, zoom_beat=0.03,
-             rot=0.0, rot_wob=0.1, decay=7,  hue_speed=0.04, shapes=0, warp=0),
-        dict(name="Scope",      scene="lissajous", zoom=1.010, zoom_beat=0.04,
-             rot=0.15, rot_wob=0.8, decay=9,  hue_speed=0.06, shapes=2, warp=0),
+             rot=0.0, rot_wob=0.1, decay=12, hue_speed=0.04, shapes=0, warp=0,
+             bloom=0.35, flash=0.1, emit=0, aa=False),
+        dict(name="Aurora",     scene="dual",      zoom=1.006, zoom_beat=0.015,
+             rot=0.05, rot_wob=0.3, decay=10, hue_speed=0.06, shapes=1, warp=2,
+             bloom=0.45, flash=0.15, emit=20, aa=True),
         dict(name="Warp Stars", scene="starfield", zoom=1.008, zoom_beat=0.02,
-             rot=0.02, rot_wob=0.2, decay=5,  hue_speed=0.05, shapes=0, warp=0),
-        dict(name="Cyber Grid", scene="grid",      zoom=1.006, zoom_beat=0.02,
-             rot=0.0, rot_wob=0.1, decay=8,  hue_speed=0.03, shapes=0, warp=0),
+             rot=0.02, rot_wob=0.2, decay=8, hue_speed=0.05, shapes=0, warp=0,
+             bloom=0.4, flash=0.1, emit=0, aa=False),
+        dict(name="Vortex",     scene="spokes",    zoom=1.012, zoom_beat=0.02,
+             rot=0.45, rot_wob=1.2, decay=10, hue_speed=0.05, shapes=2, warp=0,
+             bloom=0.5, flash=0.25, emit=40, aa=False),
+        # --- loud / explosive -------------------------------------------------
+        dict(name="Hyperspace", scene="circle",    zoom=1.028, zoom_beat=0.05,
+             rot=0.10, rot_wob=0.6, decay=10, hue_speed=0.03, shapes=3, warp=0,
+             bloom=0.7, flash=0.5, emit=80, aa=False),
+        dict(name="Dutchman",   scene="horizon",   zoom=1.035, zoom_beat=0.09,
+             rot=-0.18, rot_wob=2.2, decay=14, hue_speed=0.02, shapes=2, warp=8,
+             bloom=0.8, flash=0.6, emit=100, aa=False),
+        dict(name="Nova Pulse", scene="ring",      zoom=1.020, zoom_beat=0.12,
+             rot=0.28, rot_wob=1.0, decay=11, hue_speed=0.10, shapes=5, warp=2,
+             bloom=0.85, flash=0.7, emit=110, aa=False),
         dict(name="Supernova",  scene="particles", zoom=1.018, zoom_beat=0.08,
-             rot=0.12, rot_wob=0.6, decay=12, hue_speed=0.09, shapes=0, warp=2),
+             rot=0.12, rot_wob=0.6, decay=12, hue_speed=0.09, shapes=0, warp=2,
+             bloom=1.0, flash=0.85, emit=140, aa=False),
     ]
 
 
@@ -326,6 +350,8 @@ class Milky:
         self.use_bloom = not args.nobloom
         self.beat_flash = True
         self.auto = True
+        self.sharp = args.sharp          # global "calm/defined" override
+        self._aa = False                 # current preset anti-alias flag
         self.decay_bias = 0
         self.zoom_bias = 0.0
 
@@ -386,16 +412,16 @@ class Milky:
             rr = r0 + wave[i] * amp
             pts.append((self.CX + rr * math.cos(a), self.CY + rr * math.sin(a)))
         pts.append(pts[0])
-        pygame.draw.lines(self.canvas, self._col(0.1), False, pts, 2)
+        self.polyline(self._col(0.1), pts, False, 2)
 
     def scene_horizon(self, p, wave, spec):
         beat = self.audio.beat
         amp = 160 * (0.5 + beat)
         step = self.RW / (len(wave) - 1)
         pts = [(i * step, self.CY + wave[i] * amp) for i in range(len(wave))]
-        pygame.draw.lines(self.canvas, self._col(0.0), False, pts, 2)
+        self.polyline(self._col(0.0), pts, False, 2)
         pts2 = [(i * step, self.CY * 0.5 + wave[i] * amp * 0.6) for i in range(len(wave))]
-        pygame.draw.lines(self.canvas, self._col(0.5), False, pts2, 1)
+        self.polyline(self._col(0.5), pts2, False, 1)
 
     def scene_dual(self, p, wave, spec):
         beat = self.audio.beat
@@ -404,12 +430,12 @@ class Milky:
         for c in (self._col(0.0), self._col(0.5)):
             pts = [(i * step, self.CY + wave[i] * amp * math.sin(i / len(wave) * math.pi))
                    for i in range(len(wave))]
-            pygame.draw.lines(self.canvas, c, False, pts, 2)
+            self.polyline(c, pts, False, 2)
         r0 = min(self.RW, self.RH) * 0.16
         pts = [(self.CX + (r0 + wave[i] * 90 * (0.5 + beat)) * math.cos(i / len(wave) * TAU),
                 self.CY + (r0 + wave[i] * 90 * (0.5 + beat)) * math.sin(i / len(wave) * TAU))
                for i in range(0, len(wave), 2)]
-        pygame.draw.lines(self.canvas, self._col(0.25), True, pts, 2)
+        self.polyline(self._col(0.25), pts, True, 2)
 
     def scene_bars(self, p, wave, spec):
         n = len(spec)
@@ -443,7 +469,7 @@ class Milky:
             x = self.CX + R * math.sin(a * u + self.t)
             y = self.CY + R * math.sin(b * u)
             pts.append((x, y))
-        pygame.draw.lines(self.canvas, self._col(0.3), True, pts, 2)
+        self.polyline(self._col(0.3), pts, True, 2)
 
     def scene_ring(self, p, wave, spec):
         n = len(spec)
@@ -473,15 +499,18 @@ class Milky:
         horizon = self.CY
         off = (self.t * 0.5) % 1.0
         # perspective floor lines
+        aa = self._aa
         for i in range(1, 16):
             z = (i - off) / 16
             y = horizon + (self.RH - horizon) * (z ** 1.6)
             c = self._col(i / 16, 0.6 + 0.4 * beat)
-            pygame.draw.line(self.canvas, c, (0, y), (self.RW, y), 1)
+            (pygame.draw.aaline if aa else pygame.draw.line)(
+                self.canvas, c, (0, y), (self.RW, y))
         for j in range(-8, 9):
             x0 = self.CX + j * 14
             x1 = self.CX + j * self.RW / 8
-            pygame.draw.line(self.canvas, self._col(0.5), (x0, horizon), (x1, self.RH), 1)
+            (pygame.draw.aaline if aa else pygame.draw.line)(
+                self.canvas, self._col(0.5), (x0, horizon), (x1, self.RH))
 
     def scene_particles(self, p, wave, spec):
         # emission handled in draw_overlay via beat; just render here
@@ -502,15 +531,27 @@ class Milky:
         "particles": scene_particles,
     }
 
+    def polyline(self, color, pts, closed=False, width=2):
+        """Crisp anti-aliased line when the preset/sharp-mode asks for it,
+        otherwise a solid width line."""
+        if len(pts) < 2:
+            return
+        if self._aa:
+            pygame.draw.aalines(self.canvas, color, closed, pts)
+        else:
+            pygame.draw.lines(self.canvas, color, closed, pts, width)
+
     def draw_scene(self, p, wave, spec):
         wave = [float(v) for v in wave]   # pygame wants plain-float coord pairs
+        self._aa = bool(p.get("aa")) or self.sharp
         self.SCENE_FN[p["scene"]](self, p, wave, spec)
 
     # ---- overlays shared by all scenes ----
     def draw_overlay(self, p, wave, spec):
         beat = self.audio.beat
-        # pulsing additive shapes
-        nshapes = int(round(p["shapes"]))
+        sharp = self.sharp
+        # pulsing additive glow shapes (skipped entirely in sharp mode)
+        nshapes = 0 if sharp else int(round(p["shapes"]))
         for s in range(nshapes):
             ang = self.t * (0.4 + 0.2 * s) + s * TAU / max(1, nshapes)
             dist = (80 + 40 * s) * (0.6 + beat)
@@ -523,15 +564,23 @@ class Milky:
             self.canvas.blit(glow, (sx - rad, sy - rad),
                              special_flags=pygame.BLEND_RGB_ADD)
 
-        # particle emission on beats (for the Supernova scene + a little always)
+        # particle emission is now per-preset, not on every scene.
+        emit = int(p.get("emit", 0))
+        if p["scene"] == "particles":
+            emit = max(emit, 40)          # keep the particles scene alive
+        if sharp:
+            emit //= 3
+        flash = 0.0 if sharp else float(p.get("flash", 0.0))
+
         if self.audio.hit:
-            hue = random.random()
-            self.parts.burst(self.CX, self.CY, 120, 6 + 10 * beat, hue)
-            if self.beat_flash:
-                fl = pygame.Surface((self.RW, self.RH))
-                fv = int(24 + 40 * beat)
-                fl.fill((fv, fv, fv))
-                self.canvas.blit(fl, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+            if emit > 0:
+                self.parts.burst(self.CX, self.CY, emit, 6 + 10 * beat, random.random())
+            if self.beat_flash and flash > 0:
+                fv = int((14 + 30 * beat) * flash)
+                if fv > 0:
+                    fl = pygame.Surface((self.RW, self.RH))
+                    fl.fill((fv, fv, fv))
+                    self.canvas.blit(fl, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
     # ---- mirror / kaleidoscope post FX ----
     def apply_mirror(self):
@@ -558,13 +607,16 @@ class Milky:
                              special_flags=pygame.BLEND_RGB_ADD)
 
     # ---- bloom ----
-    def bloom(self, target):
-        if not self.use_bloom:
-            target.blit(self.canvas, (0, 0))
+    def bloom(self, target, strength):
+        target.blit(self.canvas, (0, 0))
+        if not self.use_bloom or strength <= 0.01:
             return
+        strength = min(1.0, strength)
         small = pygame.transform.smoothscale(self.canvas, (self.RW // 5, self.RH // 5))
         blur = pygame.transform.smoothscale(small, (self.RW, self.RH))
-        target.blit(self.canvas, (0, 0))
+        if strength < 1.0:                      # attenuate the glow before adding
+            k = int(255 * strength)
+            blur.fill((k, k, k), special_flags=pygame.BLEND_RGB_MULT)
         target.blit(blur, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
     # ---- HUD ----
@@ -579,11 +631,12 @@ class Milky:
             (self.font, f"palette {self.pal.cur()['name']}   mirror {MIRRORS[self.mirror]}"
                         f"{'+kaleido' if self.kaleido else ''}   "
                         f"bloom {'on' if self.use_bloom else 'off'}   "
+                        f"sharp {'ON' if self.sharp else 'off'}   "
                         f"auto {'on' if self.auto else 'off'}   {int(self.fps)}fps  [{src}]",
              (200, 220, 230)),
             (self.font, f"beat {beat_bar:<20}", self._col(0.6)),
             (self.font, "space next  n/p scene  c palette  m mirror  k kaleido  "
-                        "b bloom  a auto  s shot  h hud  f full  q quit",
+                        "x sharp  b bloom  a auto  s shot  h hud  f full  q quit",
              (150, 165, 180)),
         ]
         y = 8
@@ -627,6 +680,8 @@ class Milky:
                     self.kaleido = not self.kaleido
                 elif k == pygame.K_b:
                     self.use_bloom = not self.use_bloom
+                elif k == pygame.K_x:
+                    self.sharp = not self.sharp
                 elif k == pygame.K_t:
                     self.beat_flash = not self.beat_flash
                 elif k == pygame.K_a:
@@ -690,7 +745,8 @@ class Milky:
             self.draw_scene(p, wave, spec)
             self.draw_overlay(p, wave, spec)
             self.apply_mirror()
-            self.bloom(self.tmp)
+            bloom_strength = float(p.get("bloom", 0.6)) * (0.3 if self.sharp else 1.0)
+            self.bloom(self.tmp, bloom_strength)
 
             if self.win_size != (self.RW, self.RH):
                 pygame.transform.smoothscale(self.tmp, self.win_size, self.screen)
@@ -719,6 +775,8 @@ def parse_args(argv=None):
                     help="react to live microphone input (needs sounddevice)")
     ap.add_argument("--preset", default=None, help="start on a preset by name")
     ap.add_argument("--nobloom", action="store_true", help="disable the bloom pass")
+    ap.add_argument("--sharp", action="store_true",
+                    help="start in sharp mode: crisp lines, no flash, minimal glow")
     ap.add_argument("--list", action="store_true", help="list presets and exit")
     return ap.parse_args(argv)
 
