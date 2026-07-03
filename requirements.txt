@@ -1,0 +1,4 @@
+pygame>=2.5
+numpy>=1.24
+# optional: live microphone input for `--audio`
+# sounddevice>=0.4
