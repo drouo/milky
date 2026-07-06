@@ -320,10 +320,17 @@ class Milky:
         self.RW, self.RH = args.width, args.height
         self.CX, self.CY = self.RW / 2, self.RH / 2
         self.fullscreen = args.fullscreen
-        flags = pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE
+        self._base_flags = (pygame.OPENGL | pygame.DOUBLEBUF) if args.gpu else 0
+        flags = self._base_flags | (
+            pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE)
         self.screen = pygame.display.set_mode(
             (0, 0) if self.fullscreen else (self.RW, self.RH), flags)
         self.win_size = self.screen.get_size()
+
+        self.gpu = None
+        if args.gpu:
+            import mgpu
+            self.gpu = mgpu.GPURenderer(self.RW, self.RH)
 
         self.canvas = pygame.Surface((self.RW, self.RH)).convert()
         self.canvas.fill((0, 0, 0))
@@ -651,11 +658,56 @@ class Milky:
             surf.blit(f.render(txt, True, c), (12, y))
             y += f.get_height() + 4
 
+    # ---- GPU render path ----
+    def _hud_bytes(self, name, p):
+        if not self.show_hud:
+            return None
+        surf = pygame.Surface((self.RW, self.RH), pygame.SRCALPHA)
+        self.draw_hud(name, p, surf)
+        return pygame.image.tobytes(surf, "RGBA")
+
+    def render_gpu(self, p, name, wave, spec):
+        beat = self.audio.beat
+        zoom = p["zoom"] + p["zoom_beat"] * beat + self.zoom_bias
+        rot = (p["rot"] + p["rot_wob"] * math.sin(self.t * 0.7)) * (1 + beat)
+        angle = math.radians(rot * self.dt * 60)
+        ox = oy = 0.0
+        if p["warp"] > 0.5:
+            ox = math.sin(self.t * 1.3) * p["warp"] * (0.5 + beat) / self.RW
+            oy = math.cos(self.t * 1.1) * p["warp"] * (0.5 + beat) / self.RH
+        d = max(1, int(p["decay"]) + self.decay_bias)
+        decay = max(0.0, 1.0 - d / 255.0)
+
+        # scene layer on a fresh black canvas -- accumulation lives on the GPU
+        self.canvas.fill((0, 0, 0))
+        self.draw_scene(p, wave, spec)
+        self.draw_overlay(p, wave, spec)
+
+        bloom_amt = 0.0
+        if self.use_bloom:
+            bloom_amt = float(p.get("bloom", 0.6)) * (0.3 if self.sharp else 1.0)
+        mirror_id = 3 if self.kaleido else self.mirror   # MIRRORS index == shader id
+
+        self.gpu.render(
+            angle=angle, zoom=zoom, offset=(ox, oy), decay=decay,
+            scene_bytes=pygame.image.tobytes(self.canvas, "RGB"),
+            mirror_id=mirror_id, bloom_amt=bloom_amt,
+            hud_bytes=self._hud_bytes(name, p), win_size=self.win_size)
+
     # ---- screenshot ----
+    def _save_screen(self, path):
+        if self.gpu:
+            w, h = self.win_size
+            data = self.gpu.ctx.screen.read(components=3)
+            surf = pygame.image.frombytes(data, (w, h), "RGB", True)
+        else:
+            surf = self.screen
+        pygame.image.save(surf, path)
+
     def screenshot(self):
         os.makedirs("shots", exist_ok=True)
         path = os.path.join("shots", time.strftime("milky_%Y%m%d_%H%M%S.png"))
-        pygame.image.save(self.screen, path)
+        self._save_screen(path)
         print("saved", path)
 
     # ---- events ----
@@ -665,7 +717,8 @@ class Milky:
                 return False
             if e.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.win_size = (max(320, e.w), max(240, e.h))
-                self.screen = pygame.display.set_mode(self.win_size, pygame.RESIZABLE)
+                self.screen = pygame.display.set_mode(
+                    self.win_size, pygame.RESIZABLE | self._base_flags)
             if e.type == pygame.KEYDOWN:
                 k = e.key
                 if k in (pygame.K_ESCAPE, pygame.K_q):
@@ -722,13 +775,15 @@ class Milky:
     def toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
         if self.fullscreen:
-            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            self.screen = pygame.display.set_mode(
+                (0, 0), pygame.FULLSCREEN | self._base_flags)
         else:
-            self.screen = pygame.display.set_mode((self.RW, self.RH), pygame.RESIZABLE)
+            self.screen = pygame.display.set_mode(
+                (self.RW, self.RH), pygame.RESIZABLE | self._base_flags)
         self.win_size = self.screen.get_size()
 
     # ---- main loop ----
-    def run(self, selftest_frames=None):
+    def run(self, selftest_frames=None, shot_path=None):
         running = True
         frames = 0
         while running:
@@ -750,22 +805,26 @@ class Milky:
             wave, spec = self.audio.sample(self.t, max(1e-3, dt))
             self.hue += p["hue_speed"] * dt * 3.0
 
-            self.feedback(p, dt)
-            self.draw_scene(p, wave, spec)
-            self.draw_overlay(p, wave, spec)
-            self.apply_mirror()
-            bloom_strength = float(p.get("bloom", 0.6)) * (0.3 if self.sharp else 1.0)
-            self.bloom(self.tmp, bloom_strength)
-
-            if self.win_size != (self.RW, self.RH):
-                pygame.transform.smoothscale(self.tmp, self.win_size, self.screen)
+            if self.gpu:
+                self.render_gpu(p, name, wave, spec)
             else:
-                self.screen.blit(self.tmp, (0, 0))
-            self.draw_hud(name, p, self.screen)
-            pygame.display.flip()
-
+                self.feedback(p, dt)
+                self.draw_scene(p, wave, spec)
+                self.draw_overlay(p, wave, spec)
+                self.apply_mirror()
+                bloom_strength = float(p.get("bloom", 0.6)) * (0.3 if self.sharp else 1.0)
+                self.bloom(self.tmp, bloom_strength)
+                if self.win_size != (self.RW, self.RH):
+                    pygame.transform.smoothscale(self.tmp, self.win_size, self.screen)
+                else:
+                    self.screen.blit(self.tmp, (0, 0))
+                self.draw_hud(name, p, self.screen)
             frames += 1
-            if selftest_frames is not None and frames >= selftest_frames:
+            last = selftest_frames is not None and frames >= selftest_frames
+            if last and shot_path:
+                self._save_screen(shot_path)   # before flip: back buffer still holds it
+            pygame.display.flip()
+            if last:
                 break
 
         self.audio.close()
@@ -786,6 +845,8 @@ def parse_args(argv=None):
     ap.add_argument("--speed", type=float, default=1.0,
                     help="initial speed (0.02 = near-frozen slow, 4.0 = fast)")
     ap.add_argument("--nobloom", action="store_true", help="disable the bloom pass")
+    ap.add_argument("--gpu", action="store_true",
+                    help="GPU render path (moderngl): warp/bloom/mirror on the GPU")
     ap.add_argument("--sharp", action="store_true",
                     help="start in sharp mode: crisp lines, no flash, minimal glow")
     ap.add_argument("--list", action="store_true", help="list presets and exit")
