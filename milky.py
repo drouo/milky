@@ -1145,7 +1145,7 @@ class Milky:
     # ---- screenshot ----
     def _save_screen(self, path):
         if self.gpu:
-            w, h = self.win_size
+            w, h = self.gpu.ctx.screen.size
             data = self.gpu.ctx.screen.read(components=3)
             surf = pygame.image.frombytes(data, (w, h), "RGB", True)
         else:
