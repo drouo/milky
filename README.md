@@ -8,8 +8,8 @@ on top.
 
 | | |
 |:---:|:---:|
-| ![dino](shots/milky_20260707_215210.png) | ![party](shots/milky_20260707_215204.png) |
-| ![contour](shots/milky_20260707_182424.png) | ![starfield](shots/milky_20260703_224820.png) |
+| ![starfield](shots/milky_20260707_182423.png) | ![aurora](shots/milky_20260707_182425.png) |
+| ![hyperspace](shots/milky_20260707_215212.png) | ![nova](shots/milky_20260707_215216.png) |
 
 ## Features
 
