@@ -154,7 +154,9 @@ class GPURenderer:
             f.use(); ctx.clear(0, 0, 0, 1)
 
         self.scene_tex = tex(rw, rh, 3)        # CPU scene layer (RGB)
-        self.hud_tex = tex(rw, rh, 4)          # CPU hud layer (RGBA)
+        self.hud_tex = tex(1, 1, 4)            # CPU hud layer (RGBA); resized on demand
+        self.dino_tex = tex(1, 1, 4)           # dino overlay; resized on demand
+        self.post_tex = tex(1, 1, 4)           # scene post layer (party, etc); resized on demand
 
         # quarter-res bloom scratch
         bw, bh = max(1, rw // 4), max(1, rh // 4)
@@ -169,7 +171,8 @@ class GPURenderer:
         vao.render(moderngl.TRIANGLE_STRIP)
 
     def render(self, *, angle, zoom, offset, decay, scene_bytes,
-               mirror_id, bloom_amt, hud_bytes, win_size):
+               mirror_id, bloom_amt, hud_bytes, dino_bytes,
+               scene_post_bytes, win_size):
         ctx = self.ctx
         prev = self.accum[self.cur]
         self.cur ^= 1
@@ -178,6 +181,10 @@ class GPURenderer:
 
         # 1. warp previous accumulation into the current buffer
         ctx.disable(moderngl.BLEND)
+        ctx.disable(moderngl.DEPTH_TEST)
+        ctx.disable(moderngl.CULL_FACE)
+        ctx.scissor = None
+        ctx.depth_mask = False
         dst_fbo.use()
         ctx.viewport = (0, 0, self.rw, self.rh)
         prev.use(0)
@@ -221,6 +228,11 @@ class GPURenderer:
         # 4. present to the screen with mirror/kaleido fold + bloom
         ctx.screen.use()
         ctx.viewport = (0, 0, *win_size)
+        ctx.scissor = None
+        ctx.depth_mask = True
+        ctx.disable(moderngl.BLEND)
+        ctx.disable(moderngl.DEPTH_TEST)
+        ctx.disable(moderngl.CULL_FACE)
         dst.use(0)
         bloom_src.use(1)
         self.present["scene"] = 0
@@ -231,10 +243,52 @@ class GPURenderer:
 
         # 5. hud overlay (alpha blended, unaffected by the fold)
         if hud_bytes is not None:
-            self.hud_tex.write(hud_bytes)
+            hw, hh = self.hud_tex.size
+            expected = (win_size[0], win_size[1])
+            if (hw, hh) != expected:
+                self.hud_tex = ctx.texture(expected, 4, data=hud_bytes)
+                self.hud_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self.hud_tex.repeat_x = self.hud_tex.repeat_y = False
+            else:
+                self.hud_tex.write(hud_bytes)
             ctx.enable(moderngl.BLEND)
             ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
             self.hud_tex.use(0)
+            self.blit["tex"] = 0
+            self.blit["flip_y"] = True
+            self._quad(self.blit, self.blit_vao)
+            ctx.disable(moderngl.BLEND)
+
+        # 7. scene post overlay (party animals, etc); alpha blended
+        if scene_post_bytes is not None:
+            pw, ph = self.post_tex.size
+            expected = (win_size[0], win_size[1])
+            if (pw, ph) != expected:
+                self.post_tex = ctx.texture(expected, 4, data=scene_post_bytes)
+                self.post_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self.post_tex.repeat_x = self.post_tex.repeat_y = False
+            else:
+                self.post_tex.write(scene_post_bytes)
+            ctx.enable(moderngl.BLEND)
+            ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            self.post_tex.use(0)
+            self.blit["tex"] = 0
+            self.blit["flip_y"] = True
+            self._quad(self.blit, self.blit_vao)
+            ctx.disable(moderngl.BLEND)
+
+        # 6. dino overlay (also alpha blended, after everything)
+        if dino_bytes is not None:
+            dw, dh = self.dino_tex.size
+            if (dw, dh) != (win_size[0], win_size[1]):
+                self.dino_tex = ctx.texture(win_size, 4, data=dino_bytes)
+                self.dino_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self.dino_tex.repeat_x = self.dino_tex.repeat_y = False
+            else:
+                self.dino_tex.write(dino_bytes)
+            ctx.enable(moderngl.BLEND)
+            ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            self.dino_tex.use(0)
             self.blit["tex"] = 0
             self.blit["flip_y"] = True
             self._quad(self.blit, self.blit_vao)

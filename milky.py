@@ -30,6 +30,7 @@ import math
 import time
 import random
 import argparse
+from collections import deque
 
 try:
     import pygame
@@ -234,6 +235,333 @@ class Particles:
             self.life, self.hue = self.life[keep], self.hue[keep]
 
 
+class DinoGame:
+    def __init__(self, rw, rh):
+        self.rw, self.rh = rw, rh
+        self.gy = rh - 50
+        self.dx, self.dy = 100, self.gy
+        self.dv = 0.0
+        self.jumping = False
+        self.frame = 0.0
+        self.obstacles: list[dict] = []
+        self.score = 0.0
+        self.spd = 3.0
+        self._timer = 0.0
+        self._bounce_timer = 0.0
+
+    def reset(self):
+        self.dy = self.gy
+        self.dv = 0.0
+        self.jumping = False
+        self.obstacles.clear()
+        self.score = 0.0
+        self.spd = 3.0
+        self._timer = 0.0
+        self._bounce_timer = 0.0
+
+    def step(self, beat_hit, dt):
+        s = dt * 60
+        if beat_hit and not self.jumping:
+            self.dv = -14
+            self.jumping = True
+        self._bounce_timer -= dt
+        if self._bounce_timer <= 0 and not self.jumping:
+            self.dv = -14
+            self.jumping = True
+            self._bounce_timer = random.uniform(0.8, 2.0)
+        self.dv += 0.4 * s
+        self.dy += self.dv * s
+        if self.dy >= self.gy:
+            self.dy = self.gy
+            self.dv = 0.0
+            self.jumping = False
+
+        self._timer -= dt
+        if self._timer <= 0:
+            self._timer = max(0.3, random.uniform(0.6, 2.0) - self.score * 0.003)
+            if random.random() < 0.7:
+                self.obstacles.append({"x": self.rw + 20, "h": random.choice((20, 30, 40)), "t": "cactus"})
+            else:
+                self.obstacles.append({"x": self.rw + 80, "h": 15, "t": "bird", "y": self.gy - 40 - random.random() * 30})
+
+        for o in self.obstacles:
+            o["x"] -= self.spd * dt * 60
+        self.obstacles = [o for o in self.obstacles if o["x"] > -60]
+
+        for o in self.obstacles:
+            if abs(self.dx - o["x"]) < 22:
+                if o["t"] == "bird":
+                    top = o["y"] - 8
+                    bot = o["y"] + 8
+                    if self.dy > top and self.dy < bot:
+                        self.obstacles.clear()
+                        self.score = max(0, self.score - 5)
+                else:
+                    if self.gy - self.dy < o["h"]:
+                        self.obstacles.clear()
+                        self.score = max(0, self.score - 3)
+
+        self.score += dt * self.spd * 2
+        self.spd = 3.0 + self.score * 0.02
+        self.frame += dt * 8
+
+    def draw(self, canvas, col, scale=1.0):
+        gy = self.gy
+        sw = int(self.rw * scale)
+        sh = int(self.rh * scale)
+        pygame.draw.line(canvas, (60, 60, 60), (0, int(gy * scale)), (sw, int(gy * scale)), 2)
+
+        leg_swing = int(math.sin(self.frame) * 4) if not self.jumping else 2
+        body_c = col(0.15, 0.8)
+        dark = (max(0, body_c[0] - 40), max(0, body_c[1] - 40), max(0, body_c[2] - 40))
+        white = (240, 240, 240)
+
+        # body
+        body_r = pygame.Rect(int((self.dx - 18) * scale), int((self.dy - 24) * scale),
+                             int(32 * scale), int(18 * scale))
+        pygame.draw.ellipse(canvas, body_c, body_r)
+        # head
+        pygame.draw.circle(canvas, body_c, (int((self.dx + 12) * scale), int((self.dy - 30) * scale)),
+                           int(9 * scale))
+        # eye
+        pygame.draw.circle(canvas, white, (int((self.dx + 15) * scale), int((self.dy - 32) * scale)),
+                           int(3 * scale))
+        pygame.draw.circle(canvas, (0, 0, 0), (int((self.dx + 16) * scale), int((self.dy - 32) * scale)),
+                           int(1.5 * scale))
+        # mouth
+        pygame.draw.line(canvas, dark, (int((self.dx + 18) * scale), int((self.dy - 26) * scale)),
+                         (int((self.dx + 22) * scale), int((self.dy - 26) * scale)), 2)
+        # legs
+        lw = max(1, int(4 * scale))
+        pygame.draw.line(canvas, dark,
+                         (int((self.dx - 10) * scale), int(self.dy * scale)),
+                         (int((self.dx - 12 - leg_swing) * scale), int((self.dy + 14) * scale)), lw)
+        pygame.draw.line(canvas, dark,
+                         (int((self.dx + 4) * scale), int(self.dy * scale)),
+                         (int((self.dx + 6 + leg_swing) * scale), int((self.dy + 14) * scale)), lw)
+        # tail
+        tail_pts = [(int((self.dx - 18) * scale), int((self.dy - 12) * scale)),
+                    (int((self.dx - 28) * scale), int((self.dy - 8) * scale)),
+                    (int((self.dx - 30) * scale), int((self.dy - 14) * scale))]
+        pygame.draw.lines(canvas, body_c, False, tail_pts, max(1, int(3 * scale)))
+        # spikes on back
+        for i in range(4):
+            sx = int((self.dx - 5 + i * 7) * scale)
+            sy = int((self.dy - 24) * scale)
+            pygame.draw.polygon(canvas, dark,
+                                [(sx, sy), (int(sx + 4 * scale), int(sy - 7 * scale)),
+                                 (int(sx + 7 * scale), int(sy))])
+
+        # obstacles
+        for o in self.obstacles:
+            x, h = int(o["x"] * scale), int(o["h"] * scale)
+            if o["t"] == "cactus":
+                cact_c = (50, 160, 50)
+                pygame.draw.rect(canvas, cact_c, (x - int(6 * scale), int(gy * scale) - h,
+                                                  int(12 * scale), h))
+                pygame.draw.rect(canvas, cact_c, (x - int(10 * scale), int(gy * scale) - h - int(10 * scale),
+                                                  int(20 * scale), int(10 * scale)))
+                arm_y = int(gy * scale) - h + int(10 * scale)
+                pygame.draw.rect(canvas, cact_c, (x - int(14 * scale), arm_y - int(4 * scale),
+                                                  int(8 * scale), int(8 * scale)))
+                pygame.draw.rect(canvas, cact_c, (x + int(6 * scale), arm_y - int(4 * scale),
+                                                  int(8 * scale), int(8 * scale)))
+            else:
+                bird_c = (180, 100, 60)
+                by = int(o["y"] * scale)
+                wing_up = math.sin(self.frame * 2 + o["x"] * 0.1) > 0
+                ws = int(16 * scale)
+                hs = int(10 * scale)
+                if wing_up:
+                    pygame.draw.polygon(canvas, bird_c, [(x, by), (x - ws, by - hs), (x - int(6 * scale), by)])
+                    pygame.draw.polygon(canvas, bird_c, [(x, by), (x + ws, by - hs), (x + int(6 * scale), by)])
+                else:
+                    pygame.draw.polygon(canvas, bird_c, [(x, by), (x - int(12 * scale), by + int(4 * scale)),
+                                                         (x - int(4 * scale), by)])
+                    pygame.draw.polygon(canvas, bird_c, [(x, by), (x + int(12 * scale), by + int(4 * scale)),
+                                                         (x + int(4 * scale), by)])
+
+        # score
+        font = pygame.font.SysFont("consolas", max(10, int(16 * scale)))
+        txt = font.render(f"DINO {int(self.score)}m", True, (180, 200, 180))
+        canvas.blit(txt, (int(10 * scale), int((self.rh - 80) * scale)))
+
+
+# --------------------------------------------------------------------------
+# dance party: geometric animals
+# --------------------------------------------------------------------------
+
+class PartyScene:
+    N = 14       # animals
+    GROUPS = 4   # dance groups
+
+    # animal definitions: list of (type_name, hue_base, shapes)
+    # shape commands: ("circle", cx, cy, r), ("ellipse", cx, cy, rx, ry),
+    #                 ("line", x1, y1, x2, y2, w), ("poly", [(x1,y1),...])
+    ANIMALS = [
+        ("elephant", 0.00, [
+            ("ellipse", 0, 0, 22, 16), ("ellipse", -12, 5, 11, 15),
+            ("circle", -10, -6, 7), ("line", -16, -2, -21, 12, 3)]),
+        ("giraffe", 0.08, [
+            ("ellipse", 0, 4, 16, 10), ("line", 2, -6, 2, -28, 5),
+            ("ellipse", 2, -30, 8, 6), ("circle", -1, -14, 2), ("circle", 1, -22, 2)]),
+        ("cat", 0.50, [
+            ("ellipse", 0, 0, 16, 12), ("circle", 10, -6, 6),
+            ("poly", [(7, -12), (10, -18), (13, -12)]), ("poly", [(8, -12), (10, -20), (12, -12)]),
+            ("line", -10, 0, -18, 8, 3)]),
+        ("dog", 0.06, [
+            ("ellipse", 0, 0, 18, 10), ("ellipse", 12, -4, 9, 7),
+            ("ellipse", 16, -2, 6, 8), ("line", -12, 0, -18, -10, 3)]),
+        ("frog", 0.28, [
+            ("circle", 0, 2, 10), ("circle", -5, -5, 3), ("circle", 5, -5, 3),
+            ("ellipse", -8, 10, 4, 8), ("ellipse", 8, 10, 4, 8)]),
+        ("bird", 0.55, [
+            ("ellipse", 0, 0, 18, 10), ("ellipse", -4, -4, 10, 7),
+            ("poly", [(10, 0), (16, -4), (10, 4)]), ("line", 14, 2, 18, 6, 2)]),
+        ("fish", 0.70, [
+            ("ellipse", 0, 0, 20, 9), ("poly", [(-10, 0), (-18, -7), (-18, 7)]),
+            ("poly", [(4, -4), (10, -10), (6, -2)])]),
+        ("butterfly", 0.85, [
+            ("ellipse", -8, -4, 12, 16), ("ellipse", 8, -4, 12, 16),
+            ("ellipse", -4, 6, 8, 10), ("ellipse", 4, 6, 8, 10),
+            ("ellipse", 0, 0, 3, 10)]),
+        ("bunny", 0.92, [
+            ("ellipse", 0, 2, 14, 12), ("circle", 0, -8, 8),
+            ("ellipse", -3, -20, 5, 14), ("ellipse", 3, -20, 5, 14)]),
+        ("owl", 0.12, [
+            ("circle", 0, 2, 12), ("circle", -4, -1, 4), ("circle", 4, -1, 4),
+            ("circle", -4, -1, 2), ("circle", 4, -1, 2),
+            ("poly", [(-6, -10), (-8, -16), (-4, -12)]), ("poly", [(6, -10), (8, -16), (4, -12)])]),
+        ("bear", 0.04, [
+            ("circle", 0, 4, 14), ("circle", 0, -8, 9),
+            ("circle", -8, -14, 5), ("circle", 8, -14, 5)]),
+        ("turtle", 0.30, [
+            ("ellipse", 0, 0, 22, 14), ("circle", 14, 0, 5),
+            ("ellipse", -8, 10, 5, 3), ("ellipse", 8, 10, 5, 3)]),
+        ("penguin", 0.58, [
+            ("ellipse", 0, 0, 16, 22), ("ellipse", 0, 4, 10, 12),
+            ("poly", [(4, 10), (8, 14), (4, 14)]),
+            ("ellipse", -6, -10, 4, 3), ("ellipse", 6, -10, 4, 3)]),
+        ("fox", 0.10, [
+            ("ellipse", 0, 2, 18, 12), ("poly", [(-10, -6), (-14, -14), (-6, -6)]),
+            ("poly", [(10, -6), (14, -14), (6, -6)]), ("ellipse", -16, 0, 10, 6)]),
+        ("monkey", 0.08, [
+            ("circle", 0, 0, 10), ("circle", -8, -8, 6), ("circle", 8, -8, 6),
+            ("circle", -3, -2, 2), ("circle", 3, -2, 2),
+            ("line", -4, 8, -18, 18, 3)]),
+    ]
+
+    def __init__(self, rw, rh):
+        self.rw, self.rh = rw, rh
+        self.animals = []
+        self._group_centers = []
+        self._init_animals()
+
+    def _init_animals(self):
+        self.animals.clear()
+        n = self.N
+        nk = len(self.ANIMALS)
+        margin = 80
+        gw = (self.rw - margin * 2) / self.GROUPS
+        gh = (self.rh - margin * 2) / max(1, self.GROUPS // 2)
+        self._group_centers = []
+        for g in range(self.GROUPS):
+            gx = margin + (g % (self.GROUPS // 2 + 1)) * (gw + margin)
+            gy = margin + (g // (self.GROUPS // 2 + 1)) * (gh + margin)
+            self._group_centers.append([float(gx), float(gy)])
+
+        for i in range(n):
+            kind_idx = i % nk
+            name, hue_base, shapes = self.ANIMALS[kind_idx]
+            gid = i % self.GROUPS
+            cx, cy = self._group_centers[gid]
+            off_x = random.uniform(-40, 40)
+            off_y = random.uniform(-30, 30)
+            a = PartyAnimal(name, hue_base, shapes, cx + off_x, cy + off_y,
+                            gid, hue_base + i * 0.07)
+            self.animals.append(a)
+
+    def step(self, dt, beat, t):
+        for g in range(self.GROUPS):
+            cx, cy = self._group_centers[g]
+            drift = math.sin(t * 0.15 + g * 1.3) * 60
+            drift2 = math.cos(t * 0.12 + g * 2.1) * 50
+            self._group_centers[g] = [cx + drift * dt * 0.1,
+                                      cy + drift2 * dt * 0.1]
+            # keep in bounds
+            cx, cy = self._group_centers[g]
+            self._group_centers[g][0] = max(80, min(self.rw - 80, cx))
+            self._group_centers[g][1] = max(60, min(self.rh - 60, cy))
+
+        for a in self.animals:
+            cx, cy = self._group_centers[a.group_id]
+            a.step(dt, beat, t, cx, cy)
+
+    def draw(self, surf, col_fn, beat, t, scale=1.0):
+        for a in self.animals:
+            a.draw(surf, col_fn, beat, t, scale)
+
+
+class PartyAnimal:
+    SIZE = 1.0   # base scale
+
+    def __init__(self, kind, hue_base, shapes, x, y, group_id, hue):
+        self.kind = kind
+        self.hue_base = hue_base
+        self.shapes = shapes
+        self.x, self.y = x, y
+        self.group_id = group_id
+        self.hue = hue
+        self.angle = random.random() * TAU * 0.5
+        self.bob = random.random() * TAU
+        self.flip = random.choice([-1, 1])
+
+    def step(self, dt, beat, t, cx, cy):
+        speed = (0.6 + beat * 1.2) * self.flip
+        self.angle += dt * speed * 0.8
+        self.bob += dt * (4 + beat * 3)
+        dist = 25 + beat * 15
+        dx = math.cos(self.angle) * dist
+        dy = math.sin(self.bob * 0.7) * (12 + beat * 6)
+        self.x = cx + dx
+        self.y = cy + dy
+
+    def draw(self, surf, col_fn, beat, t, scale=1.0):
+        squeeze = 1.0 + beat * 0.15
+        bx = self.x * scale
+        by = self.y * scale
+        for i, (cmd, *args) in enumerate(self.shapes):
+            frac = (self.hue_base + i * 0.07 + math.sin(t * 0.5 + i) * 0.1) % 1.0
+            v = 0.6 + 0.4 * (1 - abs(math.sin(self.bob + i)))
+            c = col_fn(frac, v)
+            if cmd == "circle":
+                cx, cy, r = args
+                px = bx + cx * scale
+                py = by + cy * scale * squeeze
+                pr = r * scale
+                pygame.draw.circle(surf, c, (int(px), int(py)), max(1, int(pr)))
+            elif cmd == "ellipse":
+                cx, cy, rx, ry = args
+                px = bx + cx * scale
+                py = by + cy * scale * squeeze
+                pw = rx * scale * 2
+                ph = ry * scale * 2 * squeeze
+                rect = pygame.Rect(int(px - pw / 2), int(py - ph / 2),
+                                   max(2, int(pw)), max(2, int(ph)))
+                pygame.draw.ellipse(surf, c, rect)
+            elif cmd == "line":
+                x1, y1, x2, y2, w = args
+                p1 = (int(bx + x1 * scale), int(by + y1 * scale * squeeze))
+                p2 = (int(bx + x2 * scale), int(by + y2 * scale * squeeze))
+                pygame.draw.line(surf, c, p1, p2, max(1, int(w * scale)))
+            elif cmd == "poly":
+                pts = args[0]
+                ppts = [(int(bx + x * scale), int(by + y * scale * squeeze))
+                        for x, y in pts]
+                if len(ppts) >= 3:
+                    pygame.draw.polygon(surf, c, ppts)
+
+
 # --------------------------------------------------------------------------
 # presets: parameter bundles that reference a scene + motion
 # --------------------------------------------------------------------------
@@ -283,6 +611,12 @@ def make_presets():
         dict(name="Supernova",  scene="particles", zoom=1.018, zoom_beat=0.08,
              rot=0.12, rot_wob=0.6, decay=12, hue_speed=0.09, shapes=0, warp=2,
              bloom=1.0, flash=0.85, emit=140, aa=False),
+        dict(name="Jurassic",  scene="dino", zoom=1.0, zoom_beat=0.0,
+             rot=0.0, rot_wob=0.0, decay=255, hue_speed=0.04, shapes=0, warp=0,
+             bloom=0.0, flash=0.0, emit=0, aa=True),
+        dict(name="Party", scene="party", zoom=1.0, zoom_beat=0.0,
+             rot=0.0, rot_wob=0.0, decay=30, hue_speed=0.08, shapes=0, warp=0,
+             bloom=0.2, flash=0.0, emit=0, aa=True),
     ]
 
 
@@ -302,7 +636,7 @@ def blend_preset(a, b, k):
 
 
 SCENES = ["circle", "horizon", "dual", "bars", "spokes",
-          "lissajous", "ring", "starfield", "grid", "particles"]
+          "lissajous", "ring", "starfield", "grid", "particles", "dino", "party"]
 MIRRORS = ["none", "lr", "quad", "kaleido"]
 
 # Speed range for the up/down keys.  Multiplicative stepping gives fine
@@ -320,13 +654,17 @@ class Milky:
         self.RW, self.RH = args.width, args.height
         self.CX, self.CY = self.RW / 2, self.RH / 2
         self.fullscreen = args.fullscreen
+        self._vsync = not args.no_vsync
+        self._max_fps = args.max_fps
         self._base_flags = (pygame.OPENGL | pygame.DOUBLEBUF) if args.gpu else 0
         flags = self._base_flags | (
             pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE)
         self.screen = pygame.display.set_mode(
-            (0, 0) if self.fullscreen else (self.RW, self.RH), flags)
+            (0, 0) if self.fullscreen else (self.RW, self.RH), flags,
+            vsync=self._vsync if args.gpu else 0)
         self.win_size = self.screen.get_size()
 
+        self._gpu_enabled = args.gpu
         self.gpu = None
         if args.gpu:
             import mgpu
@@ -341,6 +679,9 @@ class Milky:
         self.presets = make_presets()
         self.stars = Stars(500, self.RW, self.RH)
         self.parts = Particles()
+        self.dino = DinoGame(self.RW, self.RH)
+        self.dino_on = False
+        self.party = PartyScene(self.RW, self.RH)
 
         # start on requested preset if any
         start = 0
@@ -371,6 +712,9 @@ class Milky:
         self.speed = min(SPEED_MAX, max(SPEED_MIN, args.speed))
         self.hue = 0.0
         self.show_hud = True
+        self.show_perf = False
+        self._fps_history = deque(maxlen=300)
+        self._benchmark_frames = args.benchmark
         self.font = pygame.font.SysFont("consolas", 15, bold=True)
         self.big = pygame.font.SysFont("consolas", 22, bold=True)
         self.clock = pygame.time.Clock()
@@ -536,11 +880,21 @@ class Milky:
                 r = max(1, int(life * 4))
                 pygame.draw.circle(self.canvas, c, (int(x), int(y)), r)
 
+    def scene_dino(self, p, wave, spec):
+        beat = self.audio.beat
+        self.dino.spd = max(self.dino.spd, 2.0 + beat * 4)
+        self.dino.step(self.audio.hit, self.dt)
+        # drawing moved to _draw_scene_post (full window resolution, crisp)
+
+    def scene_party(self, p, wave, spec):
+        # ambient background — animals drawn at full res via _draw_scene_post
+        pass
+
     SCENE_FN = {
         "circle": scene_circle, "horizon": scene_horizon, "dual": scene_dual,
         "bars": scene_bars, "spokes": scene_spokes, "lissajous": scene_lissajous,
         "ring": scene_ring, "starfield": scene_starfield, "grid": scene_grid,
-        "particles": scene_particles,
+        "particles": scene_particles, "dino": scene_dino, "party": scene_party,
     }
 
     def polyline(self, color, pts, closed=False, width=2):
@@ -562,6 +916,8 @@ class Milky:
     def draw_overlay(self, p, wave, spec):
         beat = self.audio.beat
         sharp = self.sharp
+
+        # (dino overlay now drawn after bloom to avoid feedback trail)
         # pulsing additive glow shapes (skipped entirely in sharp mode)
         nshapes = 0 if sharp else int(round(p["shapes"]))
         for s in range(nshapes):
@@ -593,6 +949,36 @@ class Milky:
                     fl = pygame.Surface((self.RW, self.RH))
                     fl.fill((fv, fv, fv))
                     self.canvas.blit(fl, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    # ---- dino overlay (rendered after bloom to avoid feedback trails) ----
+    def _draw_dino_overlay(self, p, wave, spec, *, target=None):
+        """Draw the dino overlay on *target* (or self.tmp), returning the surface.
+        For the CPU path this is called after bloom; for GPU we produce RGBA bytes."""
+        if not (self.dino_on and p.get("scene") != "dino"):
+            return None
+        surf = target if target is not None else self.tmp
+        sx = surf.get_width()
+        scale = sx / self.RW if sx != self.RW else 1.0
+        self.dino.step(self.audio.hit, self.dt)
+        self.dino.draw(surf, self._col, scale)
+        return surf
+
+    # ---- scene post-draw (full-resolution scene content, after smoothscale) ----
+    def _draw_scene_post(self, p, wave, spec, *, target=None):
+        """Draw scene-specific content at full window resolution (after the
+        feedback/bloom/smoothscale pipeline).  Returns the target if drawn."""
+        if target is None:
+            target = self.tmp
+        scene = p["scene"]
+        if scene in ("party", "dino"):
+            sx = target.get_width()
+            scale = sx / self.RW if sx != self.RW else 1.0
+            if scene == "party":
+                self.party.draw(target, self._col, self.audio.beat, self.t, scale)
+            else:
+                self.dino.draw(target, self._col, scale)
+            return target
+        return None
 
     # ---- mirror / kaleidoscope post FX ----
     def apply_mirror(self):
@@ -635,8 +1021,10 @@ class Milky:
     def draw_hud(self, name, p, surf):
         if not self.show_hud:
             return
+        sw, sh_ = surf.get_width(), surf.get_height()
         beat_bar = "#" * int(self.audio.beat * 20)
         src = "MIC" if self.audio.live else "synth"
+        vsync_str = f"vsync {'on' if self._vsync else 'off'}"
         lines = [
             (self.big, f"{name}  ::  {p['scene']}",
              self._col(0.3, 1.0)),
@@ -644,12 +1032,13 @@ class Milky:
                         f"{'+kaleido' if self.kaleido else ''}   "
                         f"bloom {'on' if self.use_bloom else 'off'}   "
                         f"sharp {'ON' if self.sharp else 'off'}   "
+                        f"{vsync_str}   "
                         f"speed {self.speed:0.2f}x   "
                         f"auto {'on' if self.auto else 'off'}   {int(self.fps)}fps  [{src}]",
              (200, 220, 230)),
             (self.font, f"beat {beat_bar:<20}", self._col(0.6)),
             (self.font, "space next  n/p scene  c palette  m mirror  k kaleido  "
-                        "x sharp  up/down speed  0 reset  s shot  h hud  f full  q quit",
+                        "x sharp  v vsync  g perf  up/down speed  0 reset  s shot  h hud  f full  q quit",
              (150, 165, 180)),
         ]
         y = 8
@@ -658,11 +1047,51 @@ class Milky:
             surf.blit(f.render(txt, True, c), (12, y))
             y += f.get_height() + 4
 
+        # performance stats overlay
+        if self.show_perf and len(self._fps_history) > 10:
+            arr = list(self._fps_history)
+            avg = sum(arr) / len(arr)
+            mn = min(arr)
+            mx = max(arr)
+            p99 = sorted(arr)[int(len(arr) * 0.99)]
+            gpu_info = "GPU" if self.gpu else "CPU"
+            lines2 = [
+                (self.font, f"[{gpu_info}]  FPS  min {mn:.0f}  avg {avg:.0f}  max {mx:.0f}  p99 {p99:.0f}",
+                 (100, 220, 100)),
+            ]
+            for f, txt, c in lines2:
+                surf.blit(f.render(txt, True, (0, 0, 0)), (13, y + 1))
+                surf.blit(f.render(txt, True, c), (12, y))
+                y += f.get_height() + 4
+
+            # mini FPS sparkline
+            spw, sph = sw - 24, 32
+            spx, spy = 12, max(0, sh_ - sph - 12)
+            spark = pygame.Surface((spw, sph), pygame.SRCALPHA)
+            spark.fill((0, 0, 0, 100))
+            n = min(len(arr), spw)
+            arr_n = arr[-n:]
+            mx_val = max(arr_n) or 1
+            for i in range(1, n):
+                x0 = (i - 1) * spw / n
+                x1 = i * spw / n
+                y0 = sph - (arr_n[i - 1] / mx_val) * (sph - 2) - 1
+                y1 = sph - (arr_n[i] / mx_val) * (sph - 2) - 1
+                c = (100, 220, 100) if arr_n[i] >= 55 else (240, 180, 40)
+                pygame.draw.line(spark, c, (x0, y0), (x1, y1), 2)
+                if arr_n[i] < 30:
+                    pygame.draw.circle(spark, (240, 60, 60), (int(x1), int(y1)), 3)
+            surf.blit(spark, (spx, spy))
+
     # ---- GPU render path ----
+    def _reinit_gpu(self):
+        import mgpu
+        self.gpu = mgpu.GPURenderer(self.RW, self.RH)
+
     def _hud_bytes(self, name, p):
         if not self.show_hud:
             return None
-        surf = pygame.Surface((self.RW, self.RH), pygame.SRCALPHA)
+        surf = pygame.Surface(self.win_size, pygame.SRCALPHA)
         self.draw_hud(name, p, surf)
         return pygame.image.tobytes(surf, "RGBA")
 
@@ -683,6 +1112,22 @@ class Milky:
         self.draw_scene(p, wave, spec)
         self.draw_overlay(p, wave, spec)
 
+        # dino overlay as RGBA bytes (drawn on a separate transparent surface)
+        dino_bytes = None
+        if self.dino_on and p.get("scene") != "dino":
+            dino_surf = pygame.Surface(self.win_size, pygame.SRCALPHA)
+            self._draw_dino_overlay(p, wave, spec, target=dino_surf)
+            dino_bytes = pygame.image.tobytes(dino_surf, "RGBA")
+
+        # scene post layer (scene content drawn at full win_size resolution)
+        scene_post_bytes = None
+        if p.get("scene") in ("party", "dino"):
+            if p.get("scene") == "party":
+                self.party.step(self.dt, self.audio.beat, self.t)
+            post_surf = pygame.Surface(self.win_size, pygame.SRCALPHA)
+            self._draw_scene_post(p, wave, spec, target=post_surf)
+            scene_post_bytes = pygame.image.tobytes(post_surf, "RGBA")
+
         bloom_amt = 0.0
         if self.use_bloom:
             bloom_amt = float(p.get("bloom", 0.6)) * (0.3 if self.sharp else 1.0)
@@ -692,7 +1137,10 @@ class Milky:
             angle=angle, zoom=zoom, offset=(ox, oy), decay=decay,
             scene_bytes=pygame.image.tobytes(self.canvas, "RGB"),
             mirror_id=mirror_id, bloom_amt=bloom_amt,
-            hud_bytes=self._hud_bytes(name, p), win_size=self.win_size)
+            hud_bytes=self._hud_bytes(name, p),
+            dino_bytes=dino_bytes,
+            scene_post_bytes=scene_post_bytes,
+            win_size=self.win_size)
 
     # ---- screenshot ----
     def _save_screen(self, path):
@@ -718,7 +1166,11 @@ class Milky:
             if e.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.win_size = (max(320, e.w), max(240, e.h))
                 self.screen = pygame.display.set_mode(
-                    self.win_size, pygame.RESIZABLE | self._base_flags)
+                    self.win_size, pygame.RESIZABLE | self._base_flags,
+                    vsync=self._vsync if self._gpu_enabled else 0)
+                if self._gpu_enabled:
+                    self.gpu = None
+                    self._reinit_gpu()
             if e.type == pygame.KEYDOWN:
                 k = e.key
                 if k in (pygame.K_ESCAPE, pygame.K_q):
@@ -747,6 +1199,19 @@ class Milky:
                     self.auto = not self.auto
                 elif k == pygame.K_s:
                     self.screenshot()
+                elif k == pygame.K_d:
+                    self.dino_on = not self.dino_on
+                    if self.dino_on:
+                        self.dino.reset()
+                elif k == pygame.K_g:
+                    self.show_perf = not self.show_perf
+                elif k == pygame.K_v:
+                    self._vsync = not self._vsync
+                    if self.gpu:
+                        try:
+                            pygame.display.set_vsync(self._vsync)
+                        except Exception:
+                            self._vsync = not self._vsync
                 elif k == pygame.K_h:
                     self.show_hud = not self.show_hud
                 elif k == pygame.K_UP:
@@ -774,26 +1239,29 @@ class Milky:
 
     def toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
-        if self.fullscreen:
-            self.screen = pygame.display.set_mode(
-                (0, 0), pygame.FULLSCREEN | self._base_flags)
-        else:
-            self.screen = pygame.display.set_mode(
-                (self.RW, self.RH), pygame.RESIZABLE | self._base_flags)
-        self.win_size = self.screen.get_size()
+        pygame.display.toggle_fullscreen()
+        self.win_size = pygame.display.get_window_size()
 
     # ---- main loop ----
     def run(self, selftest_frames=None, shot_path=None):
         running = True
         frames = 0
+        benchmark = self._benchmark_frames > 0
+        bench_results = []
+        bench_preset_frames = 0
+        bench_preset_idx = 0
+        bench_presets_run = []
+
         while running:
-            dt_ms = self.clock.tick(60)
+            tick_target = self._max_fps if self._max_fps > 0 else 0
+            dt_ms = self.clock.tick(tick_target)
             self.fps = self.clock.get_fps()
+            self._fps_history.append(self.fps)
             dt = min(0.05, dt_ms / 1000.0) * self.speed
             self.dt = dt
             self.t += dt
 
-            if selftest_frames is None:
+            if selftest_frames is None and not benchmark:
                 running = self.handle_events()
 
             self.morph = min(1.0, self.morph + dt / 2.5)
@@ -802,8 +1270,27 @@ class Milky:
                 self.go_next()
             p, name = self.cur_params()
 
+            if benchmark:
+                if bench_preset_idx >= len(self.presets):
+                    break
+                bench_preset_frames += 1
+                bench_results.append(self.fps)
+                if bench_preset_frames >= self._benchmark_frames:
+                    avg = sum(bench_results[-self._benchmark_frames:]) / self._benchmark_frames
+                    mn = min(bench_results[-self._benchmark_frames:])
+                    mx = max(bench_results[-self._benchmark_frames:])
+                    preset_name = self.presets[bench_preset_idx]["name"]
+                    bench_presets_run.append((preset_name, mn, avg, mx))
+                    bench_preset_idx += 1
+                    bench_preset_frames = 0
+                    if bench_preset_idx < len(self.presets):
+                        self.go_next(bench_preset_idx)
+                        self.auto = False
+
             wave, spec = self.audio.sample(self.t, max(1e-3, dt))
             self.hue += p["hue_speed"] * dt * 3.0
+            if p.get("scene") == "party":
+                self.party.step(self.dt, self.audio.beat, self.t)
 
             if self.gpu:
                 self.render_gpu(p, name, wave, spec)
@@ -818,6 +1305,8 @@ class Milky:
                     pygame.transform.smoothscale(self.tmp, self.win_size, self.screen)
                 else:
                     self.screen.blit(self.tmp, (0, 0))
+                self._draw_dino_overlay(p, wave, spec, target=self.screen)
+                self._draw_scene_post(p, wave, spec, target=self.screen)
                 self.draw_hud(name, p, self.screen)
             frames += 1
             last = selftest_frames is not None and frames >= selftest_frames
@@ -828,6 +1317,15 @@ class Milky:
                 break
 
         self.audio.close()
+        if benchmark and bench_presets_run:
+            print("Benchmark results (FPS):")
+            print(f"  {'Preset':<14} {'Min':>8} {'Avg':>8} {'Max':>8}")
+            print("  " + "-" * 42)
+            for pname, mn, avg, mx in bench_presets_run:
+                print(f"  {pname:<14} {mn:>8.0f} {avg:>8.0f} {mx:>8.0f}")
+            all_avgs = [r[2] for r in bench_presets_run]
+            if all_avgs:
+                print(f"  {'--- overall ---':<14} {'---':>8} {sum(all_avgs)/len(all_avgs):>8.0f} {'---':>8}")
         pygame.quit()
 
 
@@ -847,9 +1345,15 @@ def parse_args(argv=None):
     ap.add_argument("--nobloom", action="store_true", help="disable the bloom pass")
     ap.add_argument("--gpu", action="store_true",
                     help="GPU render path (moderngl): warp/bloom/mirror on the GPU")
+    ap.add_argument("--no-vsync", action="store_true",
+                    help="disable vertical sync (GPU path only; default is vsync on)")
+    ap.add_argument("--max-fps", type=int, default=0,
+                    help="cap frame rate at N fps (0 = uncapped, default 0)")
     ap.add_argument("--sharp", action="store_true",
                     help="start in sharp mode: crisp lines, no flash, minimal glow")
     ap.add_argument("--list", action="store_true", help="list presets and exit")
+    ap.add_argument("--benchmark", type=int, default=0, metavar="N",
+                    help="run N frames through all presets and print FPS stats")
     return ap.parse_args(argv)
 
 
@@ -871,6 +1375,11 @@ def main():
         # exercise every scene + mirror in the self-test
         m.run(selftest_frames=n)
         print("selftest OK")
+        return
+
+    if args.benchmark:
+        m = Milky(args)
+        m.run()
         return
 
     Milky(args).run()
