@@ -9,7 +9,7 @@ on top.
 | | |
 |:---:|:---:|
 | ![starfield](shots/milky_20260707_182423.png) | ![aurora](shots/milky_20260707_182425.png) |
-| ![hyperspace](shots/milky_20260707_215212.png) | ![nova](shots/milky_20260707_215216.png) |
+| ![vortex](shots/milky_20260702_211401.png) | ![aurora](shots/milky_20260707_215216.png) |
 
 ## Features
 
