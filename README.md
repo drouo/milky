@@ -6,7 +6,10 @@ warping feedback tunnel, reactive waveforms, bloom glow, kaleidoscopic mirrors
 and auto-morphing presets — and piles a bunch of extra scenes and live controls
 on top.
 
-![scenes](shots/) <!-- drop a screenshot here (press `s` in-app) -->
+| | |
+|:---:|:---:|
+| ![dino](shots/milky_20260707_215210.png) | ![party](shots/milky_20260707_215204.png) |
+| ![contour](shots/milky_20260707_182424.png) | ![starfield](shots/milky_20260703_224820.png) |
 
 ## Features
 
